@@ -7,6 +7,7 @@ from typing import List, Dict, Tuple, Set
 from decimal import Decimal
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 
 from ..models.liquidation import LiquidationDocument, TributeRecord
 from ..models.grouping_config import GroupingConfig
@@ -14,6 +15,53 @@ from ..models.grouping_config import GroupingConfig
 
 class HTMLGroupedExporter:
     """Exports grouped concept records to HTML format"""
+
+    # Mapping of OPAEF concept codes to local contable partidas
+    CORRESP_PARTIDAS = {
+        '751': ['300', 'agua'],  # consumo agua
+        '678': ['300', 'agua'],  # agua alta contador
+        '450': ['300', 'agua'],  # agua consumo
+        '451': ['10049', 'agua'],  # iva agua?
+        '452': ['300', 'agua'],  # agua canon ayto
+        '750': ['300', 'agua'],  # agua cuota fija
+        '568': ['305', 'agua'],  # agua canon junta andalucía
+        '573': ['10049', 'agua'],  # agua iva cuota fija
+        '665': ['10049', 'agua'],  # agua iva agua
+        '752': ['10049', 'agua'],  # agua iva
+        '753': ['10049', 'agua'],  # agua iva conservacion
+        '015': ['116', 'plusvalia'],  # plusvalia ivtnu
+        '022': ['302', 'basuras'],  # basuras
+        '025': ['331', 'cocheras'],  # entr. vehículos
+        '033': ['325', 'exp. doc.'],  # licencia apertura
+        '520': ['325', 'exp. doc.'],  # licencia apertura2
+        '039': ['32903', 'mercado'],  # mercado
+        '062': ['339', 'dom. publico'],  # ocup. via pública
+        '640': ['339', 'dom. publico'],  # tasas ocup dom publico (barraca feria)
+        '649': ['339', 'dom. publico'],  # tasas ocup dom publico (andamios/esco)
+        '663': ['339', 'dom. publico'],  # tasas ocup dom publico (escombros)
+        '329': ['331', 'cocheras'],  # reserva aparcamiento
+        '008': ['32900', 'cementerio'],  # TASAS CEMENTERIO INHUMACION
+        '035': ['32900', 'cementerio'],  # serv. cementerio
+        '372': ['32904', 'guarderia'],  # guardería
+        '398': ['32904', 'guarderia'],  # guardería comedor
+        '516': ['32904', 'guarderia'],  # taller absentismo
+        '806': ['332', 'topv'],  # topv vuelo, suelo, sub, emp suministradoras
+        '462': ['39120', 'multas ant'],  # multas trafico antiguas
+        '512': ['290', 'obras'],  # impuesto de constr, instalaciones y obras
+        '699': ['290', 'obras'],  # prestacion compensatoria ley ou
+        '669': ['399', '399 otros_i'],  # daños via publica
+        # GESTION OPAEF
+        '102': ['114', 'ibi esp'],  # IBI INMEBLES ESPECIALES
+        '204': ['130', 'iae'],  # iae
+        '206': ['130', 'iae'],  # altas iae
+        '205': ['112', 'ibi rus'],  # ibi rústica
+        '208': ['113', 'ibi urb'],  # ibi urbana
+        '213': ['130', 'iae inspeccion'],  # iae inspeccion
+        '218': ['39110', 'multas por infracc trib'],  # multas por infracciones tributarias
+        '501': ['115', 'ivtm'],  # ivtm
+        '700': ['393', 'intereses'],  # intereses de demora
+        '777': ['39120', 'multas'],  # multas tráfico
+    }
 
     def __init__(self, document: LiquidationDocument, grouping_config: GroupingConfig):
         """
@@ -25,6 +73,103 @@ class HTMLGroupedExporter:
         """
         self.document = document
         self.grouping_config = grouping_config
+
+    def _compact_codes(self, codes: List[str]) -> str:
+        """
+        Compact a list of codes by grouping common patterns.
+
+        Examples:
+            026/2021/58/064/573, 026/2021/58/064/665, ...
+            -> 026/2021/58/{064,068,086}/573,665,752,753
+
+            2023/E/0000783, 2023/E/0000784, ...
+            -> 2023/E/783,784,786,787
+
+        Args:
+            codes: List of code strings to compact
+
+        Returns:
+            Compacted string representation
+        """
+        if not codes:
+            return ""
+
+        # Group codes by pattern
+        five_part = defaultdict(lambda: defaultdict(set))  # {(base): {level: {suffixes}}}
+        e_codes = []
+        otros = []
+
+        for c in codes:
+            parts = c.split('/')
+            if len(parts) == 5:
+                # Format: 026/2021/58/064/573
+                base = tuple(parts[:3])  # (026, 2021, 58)
+                level = parts[3]  # 064
+                suffix = parts[4]  # 573
+                five_part[base][level].add(suffix)
+            elif len(parts) == 3 and parts[1] == 'E':
+                # Format: 2023/E/0000783
+                # Remove leading zeros from number
+                num = parts[2].lstrip('0') or '0'
+                e_codes.append(num)
+            else:
+                # Unknown format, keep as-is
+                otros.append(c)
+
+        result = []
+
+        # Format five-part codes
+        for base, levels_dict in sorted(five_part.items()):
+            levels = sorted(levels_dict.keys())
+            # Get all unique suffixes across all levels
+            all_suffixes = set()
+            for suffixes in levels_dict.values():
+                all_suffixes.update(suffixes)
+            suffixes_str = ','.join(sorted(all_suffixes))
+
+            # Format: 026/2021/58/{064,068,086}/573,665,752,753
+            base_str = '/'.join(base)
+            levels_str = '{' + ','.join(levels) + '}'
+            result.append(f"{base_str}/{levels_str}/{suffixes_str}")
+
+        # Format E-codes (sort numerically)
+        if e_codes:
+            # Sort numerically
+            sorted_e = sorted(e_codes, key=lambda x: int(x) if x.isdigit() else 0)
+            result.append(f"2023/E/{','.join(sorted_e)}")
+
+        # Add other codes as-is
+        result.extend(otros)
+
+        return ' '.join(result)
+
+    def _get_partidas_from_records(self, records: List[TributeRecord]) -> str:
+        """
+        Extract unique partidas from records and format them.
+
+        Args:
+            records: List of tribute records
+
+        Returns:
+            Formatted string with partidas, e.g., "300, 10049"
+        """
+        partidas_set = set()
+
+        for record in records:
+            # Extract concept code from clave_recaudacion
+            concept_code = self.grouping_config.get_concept_code(record.clave_recaudacion)
+
+            # Look up partida in the mapping
+            if concept_code in self.CORRESP_PARTIDAS:
+                partida = self.CORRESP_PARTIDAS[concept_code][0]
+                partidas_set.add(partida)
+
+        # Return sorted unique partidas as comma-separated string
+        if partidas_set:
+            return ', '.join(sorted(partidas_set))
+        else:
+            # If no partidas found, return a default value
+            return 'N/A'
 
     def export_grouped_concepts(
         self,
@@ -183,6 +328,7 @@ class HTMLGroupedExporter:
     def _collect_unique_claves(self, records: List[TributeRecord]) -> Tuple[str, str]:
         """
         Collect unique clave_recaudacion and clave_contabilidad from records
+        and compact them using the _compact_codes method.
 
         Returns:
             Tuple of (claves_recaudacion_str, claves_contabilidad_str)
@@ -190,18 +336,32 @@ class HTMLGroupedExporter:
         claves_recaudacion = sorted(set(r.clave_recaudacion for r in records))
         claves_contabilidad = sorted(set(r.clave_contabilidad for r in records))
 
-        return ' '.join(claves_recaudacion), ' '.join(claves_contabilidad)
+        # Compact the codes
+        compacted_recaudacion = self._compact_codes(claves_recaudacion)
+        compacted_contabilidad = self._compact_codes(claves_contabilidad)
 
-    def _build_texto_sical(self, group_name: str, records: List[TributeRecord]) -> str:
+        return compacted_recaudacion, compacted_contabilidad
+
+    def _build_texto_sical(self, ejercicio: int, group_name: str, records: List[TributeRecord]) -> str:
         """
         Build the texto SICAL string for a group
 
-        Format: OPAEF. REGULARIZACION COBROS LIQ. {num} MTO. PAGO {mto} {claves_rec} {claves_cont}
+        Format: OPAEF. REGULARIZACION COBROS {ejercicio} - {nombre_grupo} LIQ. {num} MTO. PAGO {mto} {claves_rec} {claves_cont}
+
+        Args:
+            ejercicio: Fiscal year
+            group_name: Name of the group
+            records: List of tribute records for this group
+
+        Returns:
+            Formatted texto SICAL string
         """
         claves_rec, claves_cont = self._collect_unique_claves(records)
 
+        # Build the texto with ejercicio and group name
         return (
-            f"OPAEF. REGULARIZACION COBROS LIQ. {self.document.numero_liquidacion} "
+            f"OPAEF. REGULARIZACION COBROS {ejercicio} - {group_name} "
+            f"LIQ. {self.document.numero_liquidacion} "
             f"MTO. PAGO {self.document.mandamiento_pago} {claves_rec} {claves_cont}"
         )
 
@@ -532,8 +692,12 @@ class HTMLGroupedExporter:
         # Generate rows for each group
         for idx, group in enumerate(groups):
             group_id = f"group_{year}_{idx}"
-            texto_sical = self._build_texto_sical(group['name'], group['records'])
+            # Use the year if available, otherwise use the document's ejercicio
+            ejercicio = year if year is not None else self.document.ejercicio
+            texto_sical = self._build_texto_sical(ejercicio, group['name'], group['records'])
             liquido_formatted = self._format_decimal(group['liquido'])
+            # Get partidas for this group
+            partidas = self._get_partidas_from_records(group['records'])
 
             # Row 1: Grupo and Texto SICAL
             html_parts.append(f'''
@@ -550,7 +714,7 @@ class HTMLGroupedExporter:
                     </tr>
                     <tr>
                         <td class="label-cell">Aplicación</td>
-                        <td class="value-cell">{group['name']}</td>
+                        <td class="value-cell">{partidas}</td>
                     </tr>
                     <tr>
                         <td class="label-cell">Importe Líquido</td>
