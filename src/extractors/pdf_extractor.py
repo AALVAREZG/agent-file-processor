@@ -101,7 +101,7 @@ class LiquidationPDFExtractor:
                         print(f"Warning: Failed to extract from page {page_idx + 1}: {e}")
                         continue
 
-                # Extract totals and deductions from last page (for multi-page docs) or page 2 (for 3-page docs)
+                # Extract totals and deductions by finding TOTAL table (structure-based, not page-based)
                 totals = {'voluntaria': Decimal('0'), 'ejecutiva': Decimal('0'), 'recargo': Decimal('0'),
                          'diputacion_voluntaria': Decimal('0'), 'diputacion_ejecutiva': Decimal('0'),
                          'diputacion_recargo': Decimal('0'), 'liquido': Decimal('0'), 'a_liquidar': Decimal('0')}
@@ -109,22 +109,8 @@ class LiquidationPDFExtractor:
                 advance_breakdown = []
 
                 if num_pages >= 2:
-                    try:
-                        # For multi-page documents (>3 pages), totals are on the LAST page
-                        # For 3-page documents, totals are on page 2 (index 1)
-                        if num_pages > 3:
-                            totals, deductions, advance_breakdown = self._extract_page2_data(pdf.pages[num_pages - 1])
-                        else:
-                            totals, deductions, advance_breakdown = self._extract_page2_data(pdf.pages[1])
-                    except:
-                        # If extraction fails, try the other page as fallback
-                        try:
-                            if num_pages > 3:
-                                totals, deductions, advance_breakdown = self._extract_page2_data(pdf.pages[1])
-                            else:
-                                totals, deductions, advance_breakdown = self._extract_page2_data(pdf.pages[num_pages - 1])
-                        except:
-                            pass  # Keep default zero values
+                    # Search ALL pages for the TOTAL table (not hardcoded page numbers)
+                    totals, deductions, advance_breakdown = self._find_and_extract_totals(pdf.pages)
 
                 # Extract refunds from last page if exists
                 refund_records = []
@@ -665,6 +651,131 @@ class LiquidationPDFExtractor:
             diputacion_recargo=dip_recargo,
             liquido=liquido
         )
+
+    def _find_and_extract_totals(self, pages) -> Tuple[Dict[str, Decimal], DeductionDetail, List[AdvanceBreakdown]]:
+        """
+        Find and extract totals by searching for TOTAL table structure across ALL pages.
+        This is more robust than hardcoded page numbers.
+
+        Returns:
+            Tuple of (totals dict, deductions, advance_breakdown)
+        """
+        totals = {
+            'voluntaria': Decimal('0'),
+            'ejecutiva': Decimal('0'),
+            'recargo': Decimal('0'),
+            'diputacion_voluntaria': Decimal('0'),
+            'diputacion_ejecutiva': Decimal('0'),
+            'diputacion_recargo': Decimal('0'),
+            'liquido': Decimal('0'),
+            'a_liquidar': Decimal('0')
+        }
+        deductions = None
+        advance_breakdown = []
+
+        # Search all pages for the TOTAL table
+        for page_idx, page in enumerate(pages):
+            tables = page.extract_tables(table_settings=self.table_settings)
+
+            # Look for TOTAL table by structure
+            for table in tables:
+                if not table or len(table) < 2:
+                    continue
+
+                # Check if this is the TOTAL table
+                # Row 0 should have "TOTAL" text
+                first_row = table[0]
+                if not any('TOTAL' in str(cell).upper() for cell in first_row if cell):
+                    continue
+
+                # Row 1 should have multi-line cell with VOLUNTARIA, EJECUTIVA, etc.
+                if len(table) < 2:
+                    continue
+
+                second_row = table[1]
+                multiline_cell = None
+                for cell in second_row:
+                    if cell and '\n' in str(cell):
+                        cell_str = str(cell).upper()
+                        if 'VOLUNTARIA' in cell_str and 'EJECUTIVA' in cell_str:
+                            multiline_cell = str(cell)
+                            break
+
+                if not multiline_cell:
+                    continue
+
+                # Found the TOTAL table! Extract values from multi-line cell
+                print(f"DEBUG: Found TOTAL table on page {page_idx + 1}")
+                lines = multiline_cell.split('\n')
+
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # Match VOLUNTARIA (not DIPUTACIÓN VOLUNTARIA)
+                    if line.startswith('VOLUNTARIA'):
+                        match = re.search(r'VOLUNTARIA\s+([\d.,]+)', line)
+                        if match:
+                            totals['voluntaria'] = self._parse_amount(match.group(1))
+
+                    # Match EJECUTIVA (not DIPUTACIÓN EJECUTIVA)
+                    elif line.startswith('EJECUTIVA'):
+                        match = re.search(r'EJECUTIVA\s+([\d.,]+)', line)
+                        if match:
+                            totals['ejecutiva'] = self._parse_amount(match.group(1))
+
+                    # Match RECARGO (not DIPUTACIÓN RECARGO)
+                    elif line.startswith('RECARGO'):
+                        match = re.search(r'RECARGO\s+([\d.,]+)', line)
+                        if match:
+                            totals['recargo'] = self._parse_amount(match.group(1))
+
+                    # Match DIPUTACIÓN VOLUNTARIA
+                    elif 'DIPUTACI' in line.upper() and 'VOLUNTARIA' in line:
+                        match = re.search(r'VOLUNTARIA\s+([\d.,]+)', line)
+                        if match:
+                            totals['diputacion_voluntaria'] = self._parse_amount(match.group(1))
+
+                    # Match DIPUTACIÓN EJECUTIVA
+                    elif 'DIPUTACI' in line.upper() and 'EJECUTIVA' in line:
+                        match = re.search(r'EJECUTIVA\s+([\d.,]+)', line)
+                        if match:
+                            totals['diputacion_ejecutiva'] = self._parse_amount(match.group(1))
+
+                    # Match DIPUTACIÓN RECARGO
+                    elif 'DIPUTACI' in line.upper() and 'RECARGO' in line:
+                        match = re.search(r'RECARGO\s+([\d.,]+)', line)
+                        if match:
+                            totals['diputacion_recargo'] = self._parse_amount(match.group(1))
+
+                # Check row 2 or next rows for LÍQUIDO
+                for row in table[2:]:
+                    for cell in row:
+                        if cell and re.search(r'L[IÍ]QUIDO', str(cell), re.IGNORECASE):
+                            match = re.search(r'L[IÍ]QUIDO\s+([\d.,]+)', str(cell), re.IGNORECASE)
+                            if match:
+                                totals['liquido'] = self._parse_amount(match.group(1))
+                                break
+
+                # Extract A LIQUIDAR from the same page
+                page_text = page.extract_text()
+                match = re.search(r'A\s+LIQUIDAR\s+([\d.,]+)', page_text)
+                if match:
+                    totals['a_liquidar'] = self._parse_amount(match.group(1))
+
+                # Extract deductions and advance breakdown from the same page
+                try:
+                    _, deductions, advance_breakdown = self._extract_page2_data(page)
+                except Exception as e:
+                    print(f"Warning: Failed to extract deductions from page {page_idx + 1}: {e}")
+
+                # Successfully found and extracted totals, return immediately
+                return totals, deductions, advance_breakdown
+
+        # If we didn't find TOTAL table, return defaults
+        print("Warning: TOTAL table not found in any page")
+        return totals, deductions, advance_breakdown
 
     def _extract_page2_data(self, page) -> Tuple[Dict[str, Decimal], DeductionDetail, List[AdvanceBreakdown]]:
         """Extract totals, deductions, and advance breakdown from page 2."""

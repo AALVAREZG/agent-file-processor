@@ -435,6 +435,26 @@ class HTMLGroupedExporter:
         .header h1 {
             font-size: 24px;
             margin-bottom: 15px;
+            display: inline-block;
+        }
+
+        .print-btn {
+            background-color: white;
+            color: #366092;
+            border: 2px solid white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            float: right;
+            transition: all 0.2s;
+        }
+
+        .print-btn:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
         .doc-info {
@@ -467,6 +487,10 @@ class HTMLGroupedExporter:
 
         .year-section {
             margin-bottom: 40px;
+        }
+
+        .print-year-header {
+            display: none;
         }
 
         .year-table {
@@ -571,19 +595,134 @@ class HTMLGroupedExporter:
             body {
                 background-color: white;
                 padding: 0;
+                margin: 0;
             }
 
             .container {
                 box-shadow: none;
-                padding: 0;
+                padding: 15px;
+                max-width: 100%;
+            }
+
+            .header {
+                background: #366092 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                margin: -15px -15px 20px -15px !important;
+                padding: 15px !important;
+                border-radius: 0 !important;
+            }
+
+            .print-btn {
+                display: none;
             }
 
             .copy-btn {
                 display: none;
             }
 
+            .header,
+            .doc-info {
+                display: none;
+            }
+
+            .print-year-header {
+                display: block !important;
+                background-color: #EEF3F7 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                padding: 15px;
+                margin-bottom: 15px;
+                border: 1px solid #ccc;
+            }
+
+            .print-year-header h2 {
+                background: #366092 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color: white !important;
+                padding: 10px;
+                margin: -15px -15px 10px -15px;
+                font-size: 18px;
+            }
+
+            .print-doc-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                font-size: 11px;
+            }
+
+            .print-doc-item {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .print-doc-label {
+                font-weight: bold;
+                font-size: 9px;
+                color: #666;
+                text-transform: uppercase;
+                margin-bottom: 2px;
+            }
+
+            .print-doc-value {
+                font-size: 11px;
+                color: #2E3440;
+            }
+
             .year-section {
+                page-break-before: always;
                 page-break-inside: avoid;
+                margin-top: 0;
+            }
+
+            .year-header {
+                background: #3A5F7D !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .label-cell {
+                background-color: #D6E4F0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .footer-row {
+                background: #D9E1F2 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .group-separator {
+                background-color: #f5f5f5 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Repeat document info on each page */
+            .doc-info {
+                display: block;
+                position: running(docinfo);
+            }
+
+            @page {
+                margin: 1.5cm;
+                size: A4;
+            }
+
+            /* Ensure proper spacing */
+            .year-table {
+                margin-bottom: 10px;
+            }
+
+            .texto-sical {
+                font-size: 11px;
+            }
+
+            .year-table td {
+                padding: 8px 10px;
             }
         }
 
@@ -628,6 +767,10 @@ class HTMLGroupedExporter:
                 alert('No se pudo copiar al portapapeles');
             });
         }
+
+        function printReport() {
+            window.print();
+        }
     </script>
 </head>
 <body>
@@ -641,6 +784,7 @@ class HTMLGroupedExporter:
         return f'''
         <div class="header">
             <h1>Liquidación OPAEF - Agrupación por Conceptos</h1>
+            <button class="print-btn" onclick="printReport()">🖨️ Imprimir</button>
         </div>
 
         <div class="doc-info">
@@ -678,8 +822,41 @@ class HTMLGroupedExporter:
         # Calculate total for footer
         total_liquido = sum(g['liquido'] for g in groups)
 
+        # Format document info for print header
+        fecha_str = self.document.fecha_mandamiento.strftime('%d/%m/%Y') if self.document.fecha_mandamiento else 'N/A'
+        fecha_export_str = datetime.now().strftime('%d/%m/%Y %H:%M')
+
         html_parts = [f'''
         <div class="year-section">
+            <div class="print-year-header">
+                <h2>Liquidación OPAEF - Agrupación por Conceptos</h2>
+                <div class="print-doc-grid">
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Entidad</div>
+                        <div class="print-doc-value">{self.document.entidad} ({self.document.codigo_entidad})</div>
+                    </div>
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Nº Liquidación</div>
+                        <div class="print-doc-value">{self.document.numero_liquidacion}</div>
+                    </div>
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Mandamiento de Pago</div>
+                        <div class="print-doc-value">{self.document.mandamiento_pago}</div>
+                    </div>
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Fecha Mandamiento</div>
+                        <div class="print-doc-value">{fecha_str}</div>
+                    </div>
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Ejercicio</div>
+                        <div class="print-doc-value">{year}</div>
+                    </div>
+                    <div class="print-doc-item">
+                        <div class="print-doc-label">Fecha Exportación</div>
+                        <div class="print-doc-value">{fecha_export_str}</div>
+                    </div>
+                </div>
+            </div>
             <table class="year-table">
                 <thead>
                     <tr>

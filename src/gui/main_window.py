@@ -17,6 +17,8 @@ from src.exporters.excel_exporter import export_to_excel
 from src.exporters.html_grouped_exporter import export_grouped_to_html
 from src.utils.config_manager import ConfigManager
 from src.gui.config_dialog import ConfigDialog
+from src.gui import info_messages
+from src.gui.info_dialog import InfoDialog
 
 
 # Configure CustomTkinter appearance
@@ -344,11 +346,27 @@ class MainWindow(ctk.CTk):
         """Setup the tribute records (cobros) tab with fancy table."""
         tab = self.tabview.tab("Registros de Cobros")
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+
+        # Create info button frame at top
+        info_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        info_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+
+        # Add info button
+        info_button = ctk.CTkButton(
+            info_frame,
+            text="ℹ️ Información",
+            command=self._show_cobros_info,
+            width=200,
+            height=28,
+            fg_color="#1976D2",
+            hover_color="#1565C0"
+        )
+        info_button.pack(side="right", padx=5, pady=5)
 
         # Create frame for table and scrollbar
         table_frame = ctk.CTkFrame(tab)
-        table_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
@@ -400,11 +418,27 @@ class MainWindow(ctk.CTk):
         """Setup the summary by exercise tab with table."""
         tab = self.tabview.tab("Resumen por Ejercicio")
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+
+        # Create info button frame at top
+        info_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        info_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+
+        # Add info button
+        info_button = ctk.CTkButton(
+            info_frame,
+            text="ℹ️ Información sobre validación",
+            command=self._show_resumen_info,
+            width=200,
+            height=28,
+            fg_color="#1976D2",
+            hover_color="#1565C0"
+        )
+        info_button.pack(side="right", padx=5, pady=5)
 
         # Create frame for table
         table_frame = ctk.CTkFrame(tab)
-        table_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
@@ -424,13 +458,13 @@ class MainWindow(ctk.CTk):
         self.resumen_table.heading("num_records", text="Registros")
 
         # Define column widths (diputación columns visible by default)
-        self.resumen_table.column("ejercicio", width=100, minwidth=100, anchor="center", stretch=False)
+        self.resumen_table.column("ejercicio", width=200, minwidth=100, anchor="center", stretch=False)
         self.resumen_table.column("voluntaria", width=130, minwidth=130, anchor="e", stretch=False)
         self.resumen_table.column("ejecutiva", width=130, minwidth=130, anchor="e", stretch=False)
         self.resumen_table.column("recargo", width=120, minwidth=120, anchor="e", stretch=False)
-        self.resumen_table.column("dip_vol", width=120, minwidth=120, anchor="e", stretch=False)  # Visible by default
-        self.resumen_table.column("dip_ejec", width=120, minwidth=120, anchor="e", stretch=False)  # Visible by default
-        self.resumen_table.column("dip_rec", width=120, minwidth=120, anchor="e", stretch=False)  # Visible by default
+        self.resumen_table.column("dip_vol", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
+        self.resumen_table.column("dip_ejec", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
+        self.resumen_table.column("dip_rec", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
         self.resumen_table.column("liquido", width=140, minwidth=140, anchor="e", stretch=False)
         self.resumen_table.column("num_records", width=100, minwidth=100, anchor="center", stretch=False)
 
@@ -463,6 +497,18 @@ class MainWindow(ctk.CTk):
         )
         info_label.grid(row=0, column=0, sticky="w")
 
+        # Add info button
+        info_button = ctk.CTkButton(
+            header_frame,
+            text="ℹ️ Información",
+            command=self._show_agrupacion_info,
+            width=140,
+            height=28,
+            fg_color="#1976D2",
+            hover_color="#1565C0"
+        )
+        info_button.grid(row=0, column=1, sticky="e", padx=(10, 0))
+
         refresh_btn = ctk.CTkButton(
             header_frame,
             text="↻ Actualizar Vista",
@@ -470,7 +516,7 @@ class MainWindow(ctk.CTk):
             width=120,
             height=32
         )
-        refresh_btn.grid(row=0, column=1, sticky="e", padx=(10, 0))
+        refresh_btn.grid(row=0, column=2, sticky="e", padx=(10, 0))
 
         self.export_html_btn = ctk.CTkButton(
             header_frame,
@@ -480,7 +526,7 @@ class MainWindow(ctk.CTk):
             height=32,
             state="disabled"
         )
-        self.export_html_btn.grid(row=0, column=2, sticky="e", padx=(10, 0))
+        self.export_html_btn.grid(row=0, column=3, sticky="e", padx=(10, 0))
 
         # Create frame for table
         table_frame = ctk.CTkFrame(tab)
@@ -535,11 +581,27 @@ class MainWindow(ctk.CTk):
         """Setup the deductions tab with table."""
         tab = self.tabview.tab("Deducciones")
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+
+        # Create info button frame at top
+        info_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        info_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+
+        # Add info button
+        info_button = ctk.CTkButton(
+            info_frame,
+            text="ℹ️ Información",
+            command=self._show_deducciones_info,
+            width=200,
+            height=28,
+            fg_color="#1976D2",
+            hover_color="#1565C0"
+        )
+        info_button.pack(side="right", padx=5, pady=5)
 
         # Create frame for table
         table_frame = ctk.CTkFrame(tab)
-        table_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
@@ -567,11 +629,27 @@ class MainWindow(ctk.CTk):
         """Setup the refunds tab with table."""
         tab = self.tabview.tab("Devoluciones")
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+
+        # Create info button frame at top
+        info_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        info_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+
+        # Add info button
+        info_button = ctk.CTkButton(
+            info_frame,
+            text="ℹ️ Información",
+            command=self._show_devoluciones_info,
+            width=200,
+            height=28,
+            fg_color="#1976D2",
+            hover_color="#1565C0"
+        )
+        info_button.pack(side="right", padx=5, pady=5)
 
         # Create frame for table
         table_frame = ctk.CTkFrame(tab)
-        table_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        table_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
@@ -956,14 +1034,33 @@ class MainWindow(ctk.CTk):
                                          foreground="#2E3440")  # Zebra row
         self.resumen_table.tag_configure("evenrow", background="#FFFFFF",
                                          foreground="#2E3440")
-        self.resumen_table.tag_configure("total", background="#1F4E79",
-                                         foreground="#FFFFFF",
-                                         font=(font_family, font_size + 1, "bold"))
+        self.resumen_table.tag_configure("total_calc", background="#E3F2FD",
+                                         foreground="#1565C0",
+                                         font=(font_family, font_size, "bold"))
+        self.resumen_table.tag_configure("total_doc", background="#F5F5F5",
+                                         foreground="#424242",
+                                         font=(font_family, font_size, "bold"))
+        self.resumen_table.tag_configure("validation_ok", background="#E8F5E9",
+                                         foreground="#2E7D32",
+                                         font=(font_family, font_size, "bold"))
+        self.resumen_table.tag_configure("validation_error", background="#FFE6E6",
+                                         foreground="#C62828",
+                                         font=(font_family, font_size, "bold"))
 
         # Group records by exercise to get counts
         exercise_counts = {}
         for record in self.current_document.tribute_records:
             exercise_counts[record.ejercicio] = exercise_counts.get(record.ejercicio, 0) + 1
+
+        # Calculate totals from all records (TOTAL CALCULADO)
+        from decimal import Decimal
+        calc_voluntaria = Decimal('0')
+        calc_ejecutiva = Decimal('0')
+        calc_recargo = Decimal('0')
+        calc_dip_vol = Decimal('0')
+        calc_dip_ejec = Decimal('0')
+        calc_dip_rec = Decimal('0')
+        calc_liquido = Decimal('0')
 
         # Display exercise summaries
         row_num = 0
@@ -977,6 +1074,15 @@ class MainWindow(ctk.CTk):
             dip_ejec = sum(r.diputacion_ejecutiva for r in records)
             dip_rec = sum(r.diputacion_recargo for r in records)
             liquido = sum(r.liquido for r in records)
+
+            # Accumulate for total calculated
+            calc_voluntaria += voluntaria
+            calc_ejecutiva += ejecutiva
+            calc_recargo += recargo
+            calc_dip_vol += dip_vol
+            calc_dip_ejec += dip_ejec
+            calc_dip_rec += dip_rec
+            calc_liquido += liquido
 
             tag = "evenrow" if row_num % 2 == 0 else "oddrow"
             self.resumen_table.insert("", "end", values=(
@@ -992,10 +1098,23 @@ class MainWindow(ctk.CTk):
             ), tags=(tag,))
             row_num += 1
 
-        # Add total row
+        # Add TOTAL (Calculado) row - sum of all individual records
         doc = self.current_document
         self.resumen_table.insert("", "end", values=(
-            "TOTAL",
+            "TOTAL (Calculado)",
+            f"{calc_voluntaria:,.2f}",
+            f"{calc_ejecutiva:,.2f}",
+            f"{calc_recargo:,.2f}",
+            f"{calc_dip_vol:,.2f}",
+            f"{calc_dip_ejec:,.2f}",
+            f"{calc_dip_rec:,.2f}",
+            f"{calc_liquido:,.2f}",
+            doc.total_records
+        ), tags=("total_calc",))
+
+        # Add TOTAL (Documento) row - extracted from PDF
+        self.resumen_table.insert("", "end", values=(
+            "TOTAL (Documento)",
             f"{doc.total_voluntaria:,.2f}",
             f"{doc.total_ejecutiva:,.2f}",
             f"{doc.total_recargo:,.2f}",
@@ -1004,7 +1123,71 @@ class MainWindow(ctk.CTk):
             f"{doc.total_diputacion_recargo:,.2f}",
             f"{doc.total_liquido:,.2f}",
             doc.total_records
-        ), tags=("total",))
+        ), tags=("total_doc",))
+
+        # Add VALIDATION row - compare calculated vs document
+        tolerance = Decimal('0.01')
+        diff_voluntaria = calc_voluntaria - doc.total_voluntaria
+        diff_ejecutiva = calc_ejecutiva - doc.total_ejecutiva
+        diff_recargo = calc_recargo - doc.total_recargo
+        diff_dip_vol = calc_dip_vol - doc.total_diputacion_voluntaria
+        diff_dip_ejec = calc_dip_ejec - doc.total_diputacion_ejecutiva
+        diff_dip_rec = calc_dip_rec - doc.total_diputacion_recargo
+        diff_liquido = calc_liquido - doc.total_liquido
+
+        # Check if all values match within tolerance
+        is_valid = all(
+            abs(diff) <= tolerance
+            for diff in [diff_voluntaria, diff_ejecutiva, diff_recargo,
+                        diff_dip_vol, diff_dip_ejec, diff_dip_rec, diff_liquido]
+        )
+
+        if is_valid:
+            # All values match
+            self.resumen_table.insert("", "end", values=(
+                "✓ VALIDACIÓN CORRECTA",
+                "", "", "", "", "", "", "", ""
+            ), tags=("validation_ok",))
+        else:
+            # Show differences
+            def format_diff(diff):
+                if abs(diff) <= tolerance:
+                    return "✓"
+                else:
+                    sign = "+" if diff > 0 else ""
+                    return f"{sign}{diff:,.2f}"
+
+            self.resumen_table.insert("", "end", values=(
+                "⚠ DIFERENCIAS",
+                format_diff(diff_voluntaria),
+                format_diff(diff_ejecutiva),
+                format_diff(diff_recargo),
+                format_diff(diff_dip_vol),
+                format_diff(diff_dip_ejec),
+                format_diff(diff_dip_rec),
+                format_diff(diff_liquido),
+                ""
+            ), tags=("validation_error",))
+
+    def _show_cobros_info(self):
+        """Show information dialog for Cobros tab."""
+        InfoDialog(self, "Información - Registros de Cobros", info_messages.COBROS_INFO)
+
+    def _show_resumen_info(self):
+        """Show information dialog for Resumen por Ejercicio tab."""
+        InfoDialog(self, "Información - Resumen por Ejercicio", info_messages.RESUMEN_INFO)
+
+    def _show_agrupacion_info(self):
+        """Show information dialog for Agrupación Personalizada tab."""
+        InfoDialog(self, "Información - Agrupación Personalizada", info_messages.AGRUPACION_INFO)
+
+    def _show_deducciones_info(self):
+        """Show information dialog for Deducciones tab."""
+        InfoDialog(self, "Información - Deducciones", info_messages.DEDUCCIONES_INFO)
+
+    def _show_devoluciones_info(self):
+        """Show information dialog for Devoluciones tab."""
+        InfoDialog(self, "Información - Devoluciones", info_messages.DEVOLUCIONES_INFO)
 
     def _display_deducciones(self):
         """Display deductions in table."""
