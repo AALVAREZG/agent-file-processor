@@ -60,7 +60,8 @@ The application stores user configuration in `~/.liquidacion-opaef/`:
 2. **Grouped Visualization**: Customizable grouping by year, concept, and custom groups
 3. **Configuration Management**: Persistent configuration across sessions
 4. **Excel Export**: Export data to Excel format
-5. **Two-Level Validation**: Document-level and per-year validation system
+5. **HTML Grouped Export**: Professional HTML reports with print functionality ⭐ NEW
+6. **Two-Level Validation**: Document-level and per-year validation system
 
 ## Validation Architecture
 
@@ -235,3 +236,275 @@ The extraction strategy can affect validation results. Available configurations:
 - Stored in `~/.liquidacion-opaef/extraction_config.json`
 
 If validation consistently fails, try changing the extraction strategy to see if it improves table detection.
+
+## HTML Grouped Export Architecture ⭐ NEW
+
+**Location**: `src/exporters/html_grouped_exporter.py`
+
+The HTML grouped exporter generates standalone HTML reports with professional formatting and print functionality, designed for attaching to accounting documents by fiscal year.
+
+### Core Components
+
+#### 1. HTMLGroupedExporter Class
+
+Main class responsible for generating HTML reports with grouping and formatting.
+
+**Key Methods:**
+
+- `export_grouped_concepts()` - Main export method that orchestrates the process
+- `_organize_data()` - Organizes records according to grouping configuration
+- `_organize_records()` - Groups records by concept and/or custom groups
+- `_generate_html()` - Generates complete HTML document
+- `_html_year_table()` - Generates table for each year with document header
+
+#### 2. Code Compaction Algorithm
+
+**Method**: `_compact_codes(codes: List[str]) -> str`
+
+Intelligently compacts OPAEF codes for better readability.
+
+**Algorithm:**
+
+```python
+# Input: List of codes
+codes = [
+    "026/2021/58/064/573",
+    "026/2021/58/064/665",
+    "026/2021/58/068/573",
+    "2023/E/0000783",
+    "2023/E/0000784"
+]
+
+# Processing:
+1. Classify codes by pattern:
+   - Five-part: "XXX/YYYY/ZZ/AAA/BBB" -> grouped by base (XXX/YYYY/ZZ)
+   - E-codes: "YYYY/E/NNNNNNN" -> strip leading zeros
+
+2. Group five-part codes:
+   - Extract base: (026, 2021, 58)
+   - Collect levels: {064, 068}
+   - Collect suffixes: {573, 665}
+   - Format: "026/2021/58/{064,068}/573,665"
+
+3. Group E-codes:
+   - Strip leading zeros: 0000783 -> 783
+   - Sort numerically
+   - Format: "2023/E/783,784"
+
+# Output:
+"026/2021/58/{064,068}/573,665 2023/E/783,784"
+```
+
+**Usage in Code:**
+- Applied to both `clave_recaudacion` and `clave_contabilidad`
+- Used in `_collect_unique_claves()` method
+- Integrated into texto SICAL generation
+
+#### 3. Partida Mapping System
+
+**Dictionary**: `CORRESP_PARTIDAS` (class constant)
+
+Maps OPAEF concept codes to local accounting partidas. Currently contains 44 mappings.
+
+**Structure:**
+```python
+CORRESP_PARTIDAS = {
+    'opaef_code': ['partida_local', 'description'],
+    # Examples:
+    '208': ['113', 'ibi urb'],      # IBI Urbana
+    '501': ['115', 'ivtm'],          # IVTM
+    '700': ['393', 'intereses'],     # Interest
+}
+```
+
+**Method**: `_get_partidas_from_records(records: List[TributeRecord]) -> str`
+
+Extracts unique partidas from a group of records.
+
+**Process:**
+1. For each record, extract concept code using `grouping_config.get_concept_code()`
+2. Look up partida in `CORRESP_PARTIDAS`
+3. Collect unique partidas in a set
+4. Return sorted, comma-separated string
+
+**Example Output:**
+- Single partida: `"113"`
+- Multiple partidas: `"10049, 300"`
+- No mapping found: `"N/A"`
+
+#### 4. Texto SICAL Generation
+
+**Method**: `_build_texto_sical(ejercicio: int, group_name: str, records: List[TributeRecord]) -> str`
+
+Generates the SICAL text for each group with enhanced format.
+
+**Format:**
+```
+OPAEF. REGULARIZACION COBROS {ejercicio} - {group_name} LIQ. {num_liquidacion} MTO. PAGO {num_mandamiento} {compact_clave_rec} {compact_clave_cont}
+```
+
+**Example:**
+```
+OPAEF. REGULARIZACION COBROS 2024 - IBI_URBANA LIQ. 00000623 MTO. PAGO 2025/0016 026/2024/58/{064,068}/208 2024/E/783,784
+```
+
+**Key Features:**
+- Includes fiscal year (ejercicio) at the beginning
+- Includes group name for clarity
+- Uses compacted codes for brevity
+- Includes both recaudacion and contabilidad codes
+
+### HTML Structure and Styling
+
+#### Screen View
+
+```html
+<div class="container">
+  <div class="header">
+    <h1>Liquidación OPAEF - Agrupación por Conceptos</h1>
+    <button class="print-btn">🖨️ Imprimir</button>
+  </div>
+
+  <div class="doc-info">
+    <!-- Document information grid (6 items) -->
+  </div>
+
+  <div class="year-section">
+    <div class="print-year-header" style="display:none">
+      <!-- Document info for print - hidden on screen -->
+    </div>
+    <table class="year-table">
+      <!-- Year data -->
+    </table>
+  </div>
+</div>
+```
+
+#### Print View
+
+**CSS Media Query**: `@media print`
+
+**Key Changes:**
+1. **Hide screen elements:**
+   - Main header and doc-info: `display: none`
+   - Print button: `display: none`
+   - Copy buttons: `display: none`
+
+2. **Show print elements:**
+   - `.print-year-header`: `display: block !important`
+   - Contains document info specific to each year
+
+3. **Page breaks:**
+   - Each `.year-section`: `page-break-before: always`
+   - Forces each year to start on new page
+
+4. **Color preservation:**
+   - All colored elements: `print-color-adjust: exact`
+   - Ensures headers, labels, and backgrounds print correctly
+
+5. **Layout optimization:**
+   - `@page { margin: 1.5cm; size: A4; }`
+   - Reduced padding and font sizes
+   - Optimized for A4 paper
+
+#### Per-Year Print Headers
+
+Each year section includes a hidden header (lines 831-859 in `_html_year_table()`):
+
+```html
+<div class="print-year-header">
+  <h2>Liquidación OPAEF - Agrupación por Conceptos</h2>
+  <div class="print-doc-grid">
+    <div class="print-doc-item">
+      <div class="print-doc-label">Entidad</div>
+      <div class="print-doc-value">{entidad} ({codigo})</div>
+    </div>
+    <!-- ... 5 more items including year-specific ejercicio ... -->
+  </div>
+</div>
+```
+
+**Key Feature**: The `ejercicio` field shows the specific year being printed, not the document's general year.
+
+### JavaScript Functionality
+
+**Functions:**
+
+1. **`copyToClipboard(text, buttonId)`**
+   - Copies text to clipboard using Navigator API
+   - Provides visual feedback (button changes to "Copiado")
+   - 2-second timeout before reverting
+
+2. **`printReport()`**
+   - Triggers browser print dialog
+   - Called by print button
+   - Simple wrapper around `window.print()`
+
+### Usage Example
+
+```python
+from src.exporters.html_grouped_exporter import export_grouped_to_html
+from src.models.liquidation import LiquidationDocument
+from src.models.grouping_config import GroupingConfig
+
+# Load document and config
+document = LiquidationDocument.from_pdf(pdf_path)
+grouping_config = GroupingConfig.load()
+
+# Export with grouping options
+export_grouped_to_html(
+    document=document,
+    grouping_config=grouping_config,
+    output_path="output/liquidacion_agrupado.html",
+    group_by_year=True,
+    group_by_concept=True,
+    group_by_custom=False
+)
+```
+
+### Modifying the Partida Mapping
+
+To add or modify partida mappings:
+
+1. **Edit the CORRESP_PARTIDAS dictionary** (lines 20-64):
+```python
+CORRESP_PARTIDAS = {
+    # ... existing mappings ...
+    '999': ['999', 'new concept'],  # Add new mapping
+}
+```
+
+2. **No code changes needed** - the `_get_partidas_from_records()` method automatically uses the updated dictionary
+
+3. **Consider adding to both:**
+   - Source code: `src/exporters/html_grouped_exporter.py`
+   - Documentation: README.md (partida mapping table)
+
+### Customizing Print Layout
+
+To modify print layout, edit the `@media print` CSS block (lines 410-543):
+
+**Example: Change page margins**
+```css
+@page {
+    margin: 2cm;  /* Change from 1.5cm */
+    size: A4;
+}
+```
+
+**Example: Modify header colors**
+```css
+.print-year-header h2 {
+    background: #FF0000 !important;  /* Change from blue */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+```
+
+### Best Practices
+
+1. **Always test print preview** after HTML generation changes
+2. **Use `print-color-adjust: exact`** for all elements that need color preservation
+3. **Include both screen and print views** for better UX
+4. **Validate HTML** before deploying to ensure browser compatibility
+5. **Keep file self-contained** - no external CSS/JS dependencies

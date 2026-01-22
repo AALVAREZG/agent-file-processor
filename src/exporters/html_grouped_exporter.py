@@ -96,7 +96,7 @@ class HTMLGroupedExporter:
 
         # Group codes by pattern
         five_part = defaultdict(lambda: defaultdict(set))  # {(base): {level: {suffixes}}}
-        e_codes = []
+        e_codes = defaultdict(list)  # {year: [numbers]}
         otros = []
 
         for c in codes:
@@ -107,13 +107,13 @@ class HTMLGroupedExporter:
                 level = parts[3]  # 064
                 suffix = parts[4]  # 573
                 five_part[base][level].add(suffix)
-            elif len(parts) == 3 and parts[1] == 'E':
-                # Format: 2023/E/0000783
-                # Remove leading zeros from number
+           
+            elif len(parts) == 3 and parts[1].isalpha() and len(parts[1]) == 1:
+                year = parts[0]
                 num = parts[2].lstrip('0') or '0'
-                e_codes.append(num)
+                e_codes[year].append(num)
+
             else:
-                # Unknown format, keep as-is
                 otros.append(c)
 
         result = []
@@ -125,18 +125,17 @@ class HTMLGroupedExporter:
             all_suffixes = set()
             for suffixes in levels_dict.values():
                 all_suffixes.update(suffixes)
-            suffixes_str = ','.join(sorted(all_suffixes))
+            suffixes_str = '{' + ','.join(sorted(all_suffixes)) + '}'
 
-            # Format: 026/2021/58/{064,068,086}/573,665,752,753
+            # Format: 026.2021.58.{064,068,086}.{573,665,752,753}
             base_str = '/'.join(base)
             levels_str = '{' + ','.join(levels) + '}'
-            result.append(f"{base_str}/{levels_str}/{suffixes_str}")
+            result.append(f"{base_str}.{levels_str}.{suffixes_str}")
 
-        # Format E-codes (sort numerically)
-        if e_codes:
-            # Sort numerically
-            sorted_e = sorted(e_codes, key=lambda x: int(x) if x.isdigit() else 0)
-            result.append(f"2023/E/{','.join(sorted_e)}")
+       # Format E-codes
+        for year, nums in sorted(e_codes.items()):
+            sorted_nums = sorted(nums, key=int)
+            result.append(f"{year}.E.{','.join(sorted_nums)}")
 
         # Add other codes as-is
         result.extend(otros)
