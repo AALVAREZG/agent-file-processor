@@ -32,7 +32,7 @@ class MainWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Liquidación OPAEF - Extractor de Datos")
+        self.title("CTAREC Processor - Document Analyzer")
         self.geometry("1600x900")
 
         # Current loaded document
@@ -72,7 +72,7 @@ class MainWindow(ctk.CTk):
         # App title
         self.logo_label = ctk.CTkLabel(
             self.sidebar,
-            text="Liquidación OPAEF",
+            text="CTAREC Processor",
             font=ctk.CTkFont(size=20, weight="bold")
         )
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
@@ -80,7 +80,7 @@ class MainWindow(ctk.CTk):
         # Subtitle
         self.subtitle_label = ctk.CTkLabel(
             self.sidebar,
-            text="Extractor de Datos",
+            text="Document Analyzer",
             font=ctk.CTkFont(size=12)
         )
         self.subtitle_label.grid(row=1, column=0, padx=20, pady=(0, 20))
@@ -332,15 +332,11 @@ class MainWindow(ctk.CTk):
         self.tabview.add("Registros de Cobros")
         self.tabview.add("Resumen por Ejercicio")
         self.tabview.add("Agrupación Personalizada")
-        self.tabview.add("Deducciones")
-        self.tabview.add("Devoluciones")
 
         # Configure each tab
         self._setup_cobros_tab()
         self._setup_resumen_tab()
         self._setup_grouped_tab()
-        self._setup_deducciones_tab()
-        self._setup_devoluciones_tab()
 
     def _setup_cobros_tab(self):
         """Setup the tribute records (cobros) tab with fancy table."""
@@ -370,36 +366,31 @@ class MainWindow(ctk.CTk):
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
-        # Create Treeview for table including diputación columns (visible by default)
-        columns = ("ejercicio", "concepto", "clave_recaud", "clave_cont", "voluntaria", "ejecutiva", "recargo",
-                   "dip_vol", "dip_ejec", "dip_rec", "liquido")
+        # Create Treeview for table
+        columns = ("ejercicio", "concepto", "clave_c", "clave_r", "cargo", "datas", "voluntaria", "ejecutiva", "pendiente")
         self.cobros_table = ttk.Treeview(table_frame, columns=columns, show="headings", height=20)
 
         # Define column headings
         self.cobros_table.heading("ejercicio", text="Ejercicio")
-        self.cobros_table.heading("concepto", text="Concepto")
-        self.cobros_table.heading("clave_recaud", text="Clave Recaudación")
-        self.cobros_table.heading("clave_cont", text="Clave Contabilidad")
+        self.cobros_table.heading("concepto", text="Concepto (BREVE)")
+        self.cobros_table.heading("clave_c", text="Clave C")
+        self.cobros_table.heading("clave_r", text="Clave R")
+        self.cobros_table.heading("cargo", text="Cargo")
+        self.cobros_table.heading("datas", text="Datas")
         self.cobros_table.heading("voluntaria", text="Voluntaria")
         self.cobros_table.heading("ejecutiva", text="Ejecutiva")
-        self.cobros_table.heading("recargo", text="Recargo")
-        self.cobros_table.heading("dip_vol", text="Dip.Vol")
-        self.cobros_table.heading("dip_ejec", text="Dip.Ejec")
-        self.cobros_table.heading("dip_rec", text="Dip.Rec")
-        self.cobros_table.heading("liquido", text="Líquido")
+        self.cobros_table.heading("pendiente", text="Pendiente")
 
-        # Define column widths (diputación columns visible by default)
+        # Define column widths
         self.cobros_table.column("ejercicio", width=80, minwidth=80, anchor="center", stretch=False)
-        self.cobros_table.column("concepto", width=250, minwidth=250, anchor="w", stretch=False)
-        self.cobros_table.column("clave_recaud", width=180, minwidth=180, anchor="center", stretch=False)
-        self.cobros_table.column("clave_cont", width=180, minwidth=180, anchor="center", stretch=False)
+        self.cobros_table.column("concepto", width=200, minwidth=200, anchor="w", stretch=False)
+        self.cobros_table.column("clave_c", width=120, minwidth=120, anchor="center", stretch=False)
+        self.cobros_table.column("clave_r", width=150, minwidth=150, anchor="center", stretch=False)
+        self.cobros_table.column("cargo", width=120, minwidth=120, anchor="e", stretch=False)
+        self.cobros_table.column("datas", width=120, minwidth=120, anchor="e", stretch=False)
         self.cobros_table.column("voluntaria", width=120, minwidth=120, anchor="e", stretch=False)
         self.cobros_table.column("ejecutiva", width=120, minwidth=120, anchor="e", stretch=False)
-        self.cobros_table.column("recargo", width=100, minwidth=100, anchor="e", stretch=False)
-        self.cobros_table.column("dip_vol", width=90, minwidth=90, anchor="e", stretch=False)  # Visible by default
-        self.cobros_table.column("dip_ejec", width=90, minwidth=90, anchor="e", stretch=False)  # Visible by default
-        self.cobros_table.column("dip_rec", width=90, minwidth=90, anchor="e", stretch=False)  # Visible by default
-        self.cobros_table.column("liquido", width=120, minwidth=120, anchor="e", stretch=False)
+        self.cobros_table.column("pendiente", width=120, minwidth=120, anchor="e", stretch=False)
 
         # Create scrollbars
         vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.cobros_table.yview)
@@ -443,29 +434,25 @@ class MainWindow(ctk.CTk):
         table_frame.grid_rowconfigure(0, weight=1)
 
         # Create Treeview
-        columns = ("ejercicio", "voluntaria", "ejecutiva", "recargo", "dip_vol", "dip_ejec", "dip_rec", "liquido", "num_records")
+        columns = ("ejercicio", "cargo", "datas", "voluntaria", "ejecutiva", "pendiente", "num_records")
         self.resumen_table = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
 
         # Define headings
         self.resumen_table.heading("ejercicio", text="Ejercicio")
+        self.resumen_table.heading("cargo", text="Cargo")
+        self.resumen_table.heading("datas", text="Datas")
         self.resumen_table.heading("voluntaria", text="Voluntaria")
         self.resumen_table.heading("ejecutiva", text="Ejecutiva")
-        self.resumen_table.heading("recargo", text="Recargo")
-        self.resumen_table.heading("dip_vol", text="Dip. Vol.")
-        self.resumen_table.heading("dip_ejec", text="Dip. Ejec.")
-        self.resumen_table.heading("dip_rec", text="Dip. Rec.")
-        self.resumen_table.heading("liquido", text="Líquido")
+        self.resumen_table.heading("pendiente", text="Pendiente")
         self.resumen_table.heading("num_records", text="Registros")
 
-        # Define column widths (diputación columns visible by default)
-        self.resumen_table.column("ejercicio", width=200, minwidth=100, anchor="center", stretch=False)
-        self.resumen_table.column("voluntaria", width=130, minwidth=130, anchor="e", stretch=False)
-        self.resumen_table.column("ejecutiva", width=130, minwidth=130, anchor="e", stretch=False)
-        self.resumen_table.column("recargo", width=120, minwidth=120, anchor="e", stretch=False)
-        self.resumen_table.column("dip_vol", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
-        self.resumen_table.column("dip_ejec", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
-        self.resumen_table.column("dip_rec", width=110, minwidth=100, anchor="e", stretch=False)  # Visible by default
-        self.resumen_table.column("liquido", width=140, minwidth=140, anchor="e", stretch=False)
+        # Define column widths
+        self.resumen_table.column("ejercicio", width=150, minwidth=100, anchor="center", stretch=False)
+        self.resumen_table.column("cargo", width=150, minwidth=130, anchor="e", stretch=False)
+        self.resumen_table.column("datas", width=150, minwidth=130, anchor="e", stretch=False)
+        self.resumen_table.column("voluntaria", width=150, minwidth=130, anchor="e", stretch=False)
+        self.resumen_table.column("ejecutiva", width=150, minwidth=130, anchor="e", stretch=False)
+        self.resumen_table.column("pendiente", width=150, minwidth=130, anchor="e", stretch=False)
         self.resumen_table.column("num_records", width=100, minwidth=100, anchor="center", stretch=False)
 
         # Scrollbars
@@ -534,9 +521,8 @@ class MainWindow(ctk.CTk):
         table_frame.grid_columnconfigure(0, weight=1)
         table_frame.grid_rowconfigure(0, weight=1)
 
-        # Create Treeview for grouped data (including diputación columns)
-        columns = ("grupo", "concepto", "num_records", "voluntaria", "ejecutiva",
-                   "recargo", "dip_vol", "dip_ejec", "dip_rec", "liquido")
+        # Create Treeview for grouped data
+        columns = ("grupo", "concepto", "num_records", "cargo", "datas", "voluntaria", "ejecutiva", "pendiente")
         self.grouped_table = ttk.Treeview(
             table_frame, columns=columns, show="tree headings", height=20
         )
@@ -546,26 +532,22 @@ class MainWindow(ctk.CTk):
         self.grouped_table.heading("grupo", text="Grupo")
         self.grouped_table.heading("concepto", text="Concepto")
         self.grouped_table.heading("num_records", text="Registros")
+        self.grouped_table.heading("cargo", text="Cargo")
+        self.grouped_table.heading("datas", text="Datas")
         self.grouped_table.heading("voluntaria", text="Voluntaria")
         self.grouped_table.heading("ejecutiva", text="Ejecutiva")
-        self.grouped_table.heading("recargo", text="Recargo")
-        self.grouped_table.heading("dip_vol", text="Dip.Vol")
-        self.grouped_table.heading("dip_ejec", text="Dip.Ejec")
-        self.grouped_table.heading("dip_rec", text="Dip.Rec")
-        self.grouped_table.heading("liquido", text="Líquido")
+        self.grouped_table.heading("pendiente", text="Pendiente")
 
-        # Define column widths (diputación columns visible by default)
+        # Define column widths
         self.grouped_table.column("#0", width=30, minwidth=30, stretch=False)
         self.grouped_table.column("grupo", width=250, minwidth=200, anchor="w")
         self.grouped_table.column("concepto", width=200, minwidth=150, anchor="w")
         self.grouped_table.column("num_records", width=100, minwidth=80, anchor="center")
+        self.grouped_table.column("cargo", width=130, minwidth=100, anchor="e")
+        self.grouped_table.column("datas", width=130, minwidth=100, anchor="e")
         self.grouped_table.column("voluntaria", width=130, minwidth=100, anchor="e")
         self.grouped_table.column("ejecutiva", width=130, minwidth=100, anchor="e")
-        self.grouped_table.column("recargo", width=120, minwidth=100, anchor="e")
-        self.grouped_table.column("dip_vol", width=120, minwidth=100, anchor="e", stretch=False)
-        self.grouped_table.column("dip_ejec", width=120, minwidth=100, anchor="e", stretch=False)
-        self.grouped_table.column("dip_rec", width=120, minwidth=100, anchor="e", stretch=False)
-        self.grouped_table.column("liquido", width=140, minwidth=100, anchor="e")
+        self.grouped_table.column("pendiente", width=130, minwidth=100, anchor="e")
 
         # Scrollbars
         vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.grouped_table.yview)

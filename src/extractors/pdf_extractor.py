@@ -14,11 +14,7 @@ from pathlib import Path
 from src.models.liquidation import (
     LiquidationDocument,
     TributeRecord,
-    ExerciseSummary,
-    DeductionDetail,
-    AdvanceBreakdown,
-    RefundRecord,
-    RefundSummary
+    ExerciseSummary
 )
 
 
@@ -101,27 +97,12 @@ class LiquidationPDFExtractor:
                         print(f"Warning: Failed to extract from page {page_idx + 1}: {e}")
                         continue
 
-                # Extract totals and deductions by finding TOTAL table (structure-based, not page-based)
-                totals = {'voluntaria': Decimal('0'), 'ejecutiva': Decimal('0'), 'recargo': Decimal('0'),
-                         'diputacion_voluntaria': Decimal('0'), 'diputacion_ejecutiva': Decimal('0'),
-                         'diputacion_recargo': Decimal('0'), 'liquido': Decimal('0'), 'a_liquidar': Decimal('0')}
-                deductions = None
-                advance_breakdown = []
-
-                if num_pages >= 2:
-                    # Search ALL pages for the TOTAL table (not hardcoded page numbers)
-                    totals, deductions, advance_breakdown = self._find_and_extract_totals(pdf.pages)
-
-                # Extract refunds from last page if exists
-                refund_records = []
-                refund_summaries = []
-                if num_pages >= 3:
-                    try:
-                        refund_records, refund_summaries = self._extract_refunds(pdf.pages[num_pages - 1])
-                    except:
-                        # If last page fails, try page 2 (original logic)
-                        if num_pages >= 3:
-                            refund_records, refund_summaries = self._extract_refunds(pdf.pages[2])
+                # Calculate totals from tribute records
+                total_cargo = sum(r.cargo for r in tribute_records)
+                total_datas = sum(r.datas_total for r in tribute_records)
+                total_voluntaria = sum(r.voluntaria_total for r in tribute_records)
+                total_ejecutiva = sum(r.ejecutiva_total for r in tribute_records)
+                total_pendiente = sum(r.pendiente_total for r in tribute_records)
 
                 # Build complete document
                 doc = LiquidationDocument(
@@ -133,18 +114,11 @@ class LiquidationPDFExtractor:
                     codigo_entidad=header_data['codigo_entidad'],
                     tribute_records=tribute_records,
                     exercise_summaries=exercise_summaries,
-                    total_voluntaria=totals['voluntaria'],
-                    total_ejecutiva=totals['ejecutiva'],
-                    total_recargo=totals['recargo'],
-                    total_diputacion_voluntaria=totals['diputacion_voluntaria'],
-                    total_diputacion_ejecutiva=totals['diputacion_ejecutiva'],
-                    total_diputacion_recargo=totals['diputacion_recargo'],
-                    total_liquido=totals['liquido'],
-                    deductions=deductions,
-                    advance_breakdown=advance_breakdown,
-                    refund_records=refund_records,
-                    refund_summaries=refund_summaries,
-                    a_liquidar=totals.get('a_liquidar', Decimal('0')),
+                    total_cargo=total_cargo,
+                    total_datas=total_datas,
+                    total_voluntaria=total_voluntaria,
+                    total_ejecutiva=total_ejecutiva,
+                    total_pendiente=total_pendiente,
                     codigo_verificacion=header_data.get('codigo_verificacion'),
                     firmado_por=header_data.get('firmado_por'),
                     fecha_firma=header_data.get('fecha_firma')
@@ -559,52 +533,47 @@ class LiquidationPDFExtractor:
         Parse a single tribute record row.
 
         Expected columns:
-        [CONCEPTO, CLAVE_CONTABILIDAD, CLAVE_RECAUDACION, VOLUNTARIA, EJECUTIVA,
-         RECARGO, DIP_VOLUNTARIA, DIP_EJECUTIVA, DIP_RECARGO, LIQUIDO]
+        [BREVE, CLAVE_C, CLAVE_R, CARGO, DATAS_TOTAL, DATAS_%, VOLUNTARIA_TOTAL,
+         VOLUNTARIA_%, EJECUTIVA_TOTAL, EJECUTIVA_%, PENDIENTE_TOTAL, PENDIENTE_%]
+
+        We extract only the total columns (not percentages).
         """
-        if len(row) < 10:
+        if len(row) < 8:
             return None
 
         # Clean and parse values - remove newlines and extra spaces
         concepto = str(row[0]).strip() if row[0] else ""
         # Replace newlines and multiple spaces with single space
         concepto = re.sub(r'\s+', ' ', concepto)
-        if not concepto or concepto.upper() in ['CONCEPTO', 'TOTAL']:
+        if not concepto or concepto.upper() in ['CONCEPTO', 'BREVE', 'TOTAL']:
             return None
 
-        clave_contabilidad = str(row[1]).strip() if row[1] else ""
-        clave_recaudacion = str(row[2]).strip() if row[2] else ""
+        clave_c = str(row[1]).strip() if row[1] else ""
+        clave_r = str(row[2]).strip() if row[2] else ""
 
         # Parse amounts - handle thousands separators and decimals
-        voluntaria = self._parse_amount(row[3])
-        ejecutiva = self._parse_amount(row[4])
-        recargo = self._parse_amount(row[5])
-        dip_voluntaria = self._parse_amount(row[6])
-        dip_ejecutiva = self._parse_amount(row[7])
-        dip_recargo = self._parse_amount(row[8])
-        liquido = self._parse_amount(row[9])
+        # Columns: 3=CARGO, 4=DATAS_TOTAL, 6=VOLUNTARIA_TOTAL, 8=EJECUTIVA_TOTAL, 10=PENDIENTE_TOTAL
+        cargo = self._parse_amount(row[3]) if len(row) > 3 else Decimal('0')
+        datas_total = self._parse_amount(row[4]) if len(row) > 4 else Decimal('0')
+        voluntaria_total = self._parse_amount(row[6]) if len(row) > 6 else Decimal('0')
+        ejecutiva_total = self._parse_amount(row[8]) if len(row) > 8 else Decimal('0')
+        pendiente_total = self._parse_amount(row[10]) if len(row) > 10 else Decimal('0')
 
-        # Extract ejercicio (fiscal year) from clave_recaudacion
-        # Format: 026/YYYY/xx/xxx/xxx where YYYY is the fiscal year
-        # ALWAYS extract from clave_recaudacion first (most reliable source)
+        # Extract ejercicio (fiscal year) from clave_r
+        # Try to extract year from clave codes
         extracted_ejercicio = None
-        if clave_recaudacion:
-            # Try to match the format 026/YYYY/...
-            match = re.search(r'026/(\d{4})/', clave_recaudacion)
+        if clave_r:
+            # Try any 4-digit year in clave_r
+            match = re.search(r'(\d{4})', clave_r)
             if match:
-                extracted_ejercicio = int(match.group(1))
-            else:
-                # Fallback: try any 4-digit year in clave_recaudacion
-                match = re.search(r'(\d{4})', clave_recaudacion)
-                if match:
-                    year = int(match.group(1))
-                    # Validate it's a reasonable year (2000-2030)
-                    if 2000 <= year <= 2030:
-                        extracted_ejercicio = year
+                year = int(match.group(1))
+                # Validate it's a reasonable year (2000-2030)
+                if 2000 <= year <= 2030:
+                    extracted_ejercicio = year
 
-        # If not found in clave_recaudacion, try clave_contabilidad
-        if not extracted_ejercicio and clave_contabilidad:
-            match = re.search(r'(\d{4})', clave_contabilidad)
+        # If not found in clave_r, try clave_c
+        if not extracted_ejercicio and clave_c:
+            match = re.search(r'(\d{4})', clave_c)
             if match:
                 year = int(match.group(1))
                 if 2000 <= year <= 2030:
@@ -618,38 +587,33 @@ class LiquidationPDFExtractor:
 
         return TributeRecord(
             concepto=concepto,
-            clave_contabilidad=clave_contabilidad,
-            clave_recaudacion=clave_recaudacion,
-            voluntaria=voluntaria,
-            ejecutiva=ejecutiva,
-            recargo=recargo,
-            diputacion_voluntaria=dip_voluntaria,
-            diputacion_ejecutiva=dip_ejecutiva,
-            diputacion_recargo=dip_recargo,
-            liquido=liquido,
+            clave_c=clave_c,
+            clave_r=clave_r,
+            cargo=cargo,
+            datas_total=datas_total,
+            voluntaria_total=voluntaria_total,
+            ejecutiva_total=ejecutiva_total,
+            pendiente_total=pendiente_total,
             ejercicio=ejercicio
         )
 
     def _parse_summary_row(self, row: List[str], ejercicio: int) -> ExerciseSummary:
         """Parse a TOTAL EJERCICIO summary row."""
         # Similar structure to tribute row but for totals
-        voluntaria = self._parse_amount(row[3]) if len(row) > 3 else Decimal('0')
-        ejecutiva = self._parse_amount(row[4]) if len(row) > 4 else Decimal('0')
-        recargo = self._parse_amount(row[5]) if len(row) > 5 else Decimal('0')
-        dip_voluntaria = self._parse_amount(row[6]) if len(row) > 6 else Decimal('0')
-        dip_ejecutiva = self._parse_amount(row[7]) if len(row) > 7 else Decimal('0')
-        dip_recargo = self._parse_amount(row[8]) if len(row) > 8 else Decimal('0')
-        liquido = self._parse_amount(row[9]) if len(row) > 9 else Decimal('0')
+        # Columns: 3=CARGO, 4=DATAS_TOTAL, 6=VOLUNTARIA_TOTAL, 8=EJECUTIVA_TOTAL, 10=PENDIENTE_TOTAL
+        cargo = self._parse_amount(row[3]) if len(row) > 3 else Decimal('0')
+        datas_total = self._parse_amount(row[4]) if len(row) > 4 else Decimal('0')
+        voluntaria_total = self._parse_amount(row[6]) if len(row) > 6 else Decimal('0')
+        ejecutiva_total = self._parse_amount(row[8]) if len(row) > 8 else Decimal('0')
+        pendiente_total = self._parse_amount(row[10]) if len(row) > 10 else Decimal('0')
 
         return ExerciseSummary(
             ejercicio=ejercicio,
-            voluntaria=voluntaria,
-            ejecutiva=ejecutiva,
-            recargo=recargo,
-            diputacion_voluntaria=dip_voluntaria,
-            diputacion_ejecutiva=dip_ejecutiva,
-            diputacion_recargo=dip_recargo,
-            liquido=liquido
+            cargo=cargo,
+            datas_total=datas_total,
+            voluntaria_total=voluntaria_total,
+            ejecutiva_total=ejecutiva_total,
+            pendiente_total=pendiente_total
         )
 
     def _find_and_extract_totals(self, pages) -> Tuple[Dict[str, Decimal], DeductionDetail, List[AdvanceBreakdown]]:
